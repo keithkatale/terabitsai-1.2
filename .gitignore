@@ -1,17 +1,18 @@
-# Generated on VM by setup-vm.sh
-init/initdb.sql
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-.pytest_cache/
-.venv/
-venv/
 # Env
 .env
 .env.local
+
 # IDE / OS
 .idea/
+.vscode/
 .DS_Store
 *.swp
 *.swo
+
+# Docker
+docker-data/
+
+# Reference repos (local only, not part of the project)
+bytebot-main/
+docker-webtop-master/
+Main-app/

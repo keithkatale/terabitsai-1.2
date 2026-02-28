@@ -1,13 +1,13 @@
-# Cloud Desktop System — Setup Guide
+# Terabits Cloud Desktop — Setup Guide
 
-This guide walks you through getting the cloud desktop running on Google Cloud. When done, users can open a link in their browser, log in to Apache Guacamole, and use a full Linux desktop.
+This guide walks you through running the Terabits cloud desktop on Google Cloud. When done, you open a link in your browser, log in with a username and password, and get a full Ubuntu XFCE desktop. One container, no Guacamole or VNC.
 
 ---
 
 ## Prerequisites
 
 - A Google Cloud Platform account (with free credits or billing enabled).
-- A domain name (optional for testing; required for HTTPS with your own hostname).
+- A domain name is optional for initial testing; you can use the VM’s external IP.
 
 ---
 
@@ -16,170 +16,166 @@ This guide walks you through getting the cloud desktop running on Google Cloud. 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) and select or create a project.
 2. Open **Compute Engine** → **VM instances** → **Create instance**.
 3. Set:
-   - **Name:** e.g. `cloud-desktop`
-   - **Region:** e.g. `us-central1` (pick one near your users).
-   - **Machine type:** `e2-standard-2` (2 vCPUs, 8 GB RAM). Use a larger type if you expect many simultaneous desktops.
-   - **Boot disk:** Click **Change** → **Ubuntu 22.04 LTS** → **80 GB** (or more) → **Select**.
-   - **Firewall:** Allow **HTTP** and **HTTPS** (check both under "Firewall").
+   - **Name:** e.g. `terabits-desktop`
+   - **Region:** e.g. `us-central1` (pick one near you).
+   - **Machine type:** `e2-standard-2` (2 vCPUs, 8 GB RAM). Use a larger type for smoother desktop use.
+   - **Boot disk:** **Change** → **Ubuntu 22.04 LTS** → **80 GB** (or more) → **Select**.
+   - **Firewall:** Allow **HTTP** and **HTTPS** (or create a custom rule allowing **tcp:3001**).
 4. Click **Create**.
-
-5. Note the **External IP** of the VM (e.g. `34.x.x.x`). You will use this to open Guacamole and, if you use a domain, point the domain to this IP.
+5. Note the **External IP** of the VM. You will use it to open the desktop in your browser.
 
 ---
 
-## Step 2: Copy the Project to the VM
+## Step 2: Open firewall for port 3001
 
-Copy this project onto the VM so the setup script and Docker files are available.
+The desktop is served over HTTPS on port **3001**. Ensure the VM can receive traffic on that port.
 
-**Option A — From your machine (if the project is in a git repo or you have the files):**
+- If you allowed **HTTPS** in Step 1, note that GCP’s “HTTPS” tag usually means port 443. For port 3001 you need an explicit rule.
+- In **VPC network** → **Firewall** → **Create firewall rule**:
+  - **Name:** e.g. `allow-desktop`
+  - **Targets:** All instances (or a specific tag)
+  - **Source IP ranges:** `0.0.0.0/0` (or restrict to your IPs)
+  - **Protocols and ports:** **tcp** → **3001**
+- Save.
+
+---
+
+## Step 3: Copy the project to the VM
+
+**Option A — Git (on the VM):**
 
 ```bash
-# From your laptop (replace VM_EXTERNAL_IP and path to your project)
-scp -r /path/to/terabits-1.2 VM_EXTERNAL_IP:~/
+# SSH into the VM first (Step 4), then:
+git clone https://github.com/keithkatale/terabitsai-1.2.git ~/terabitsai-1.2
+cd ~/terabitsai-1.2
 ```
 
-**Option B — On the VM (if you have the repo in Git):**
+**Option B — From your machine (scp):**
 
 ```bash
-# SSH into the VM first (see Step 3), then:
-git clone <your-repo-url> ~/terabits-1.2
-cd ~/terabits-1.2
+scp -r /path/to/terabits-1.2 VM_USER@VM_EXTERNAL_IP:~/
 ```
 
-**Option C — Manual upload:** Zip the project on your computer, upload the zip to the VM (e.g. via Cloud Console “Upload file” in the SSH session), and unzip it on the VM.
+**Option C — Upload a zip** via Cloud Console SSH “Upload file” and unzip on the VM.
 
 ---
 
-## Step 3: SSH Into the VM
+## Step 4: SSH into the VM
 
-1. In Cloud Console, go to **Compute Engine** → **VM instances**.
-2. Click **SSH** next to your VM to open a browser-based SSH session (or use `gcloud compute ssh INSTANCE_NAME` from your laptop).
+1. In Cloud Console: **Compute Engine** → **VM instances**.
+2. Click **SSH** next to your VM (or use `gcloud compute ssh INSTANCE_NAME` from your laptop).
 
-You should be in a shell on the VM (e.g. `username@cloud-desktop:~$`).
+You should be in a shell on the VM.
 
 ---
 
-## Step 4: Run the Setup Script
+## Step 5: Run the setup script
 
-On the VM, from the project root:
+From the project root on the VM:
 
 ```bash
-cd ~/terabits-1.2   # or the path where you copied the project
+cd ~/terabitsai-1.2
 sudo bash scripts/setup-vm.sh
 ```
 
 The script will:
 
 - Install Docker and Docker Compose (if not already installed).
-- Generate the Guacamole PostgreSQL schema into `init/initdb.sql`.
-- Build the desktop image (`cloud-desktop-xfce`).
-- Start the Guacamole stack (PostgreSQL, guacd, Guacamole web app).
+- Pull the webtop image (`lscr.io/linuxserver/webtop:ubuntu-xfce`).
+- Start the desktop container.
 
-When it finishes, it will print a URL like:
+At the end it prints something like:
 
-`http://YOUR_VM_IP:8080/guacamole/`
-
----
-
-## Step 5: Open Guacamole and Log In
-
-1. In your browser, open: `http://YOUR_VM_IP:8080/guacamole/`
-2. Log in with the default admin account:
-   - **Username:** `guacadmin`
-   - **Password:** `guacadmin`
-3. Change the password when prompted (recommended).
-
-You should see the Guacamole home screen. There are no desktop connections yet; you add them in the next step.
-
----
-
-## Step 6: Create a Desktop for a User
-
-Each user needs a Guacamole user account and a desktop container. The script `scripts/manage_desktops.py` creates a new desktop container and registers it in Guacamole.
-
-**6.1 Create a Guacamole user (if needed)**  
-In Guacamole: **Settings** (gear) → **Users** → **New User**. Create a user (e.g. `alice`) and set a password. Save.
-
-**6.2 Install Python dependencies and run the manager:**
-
-On the VM:
-
-```bash
-cd ~/terabits-1.2
-pip install --user -r scripts/requirements.txt
-# Or: sudo pip3 install -r scripts/requirements.txt
-
-# Create a desktop for user "alice" and register it in Guacamole
-python3 scripts/manage_desktops.py create alice
 ```
-
-The script will print the new container name and the connection name in Guacamole.
-
-**6.3 Open the desktop:**  
-Log in to Guacamole as `alice` (or refresh if already logged in). The new connection (e.g. "Desktop (alice)") should appear. Click it to open the Linux desktop in the browser.
-
-**Useful commands:**
-
-```bash
-# List desktop containers
-python3 scripts/manage_desktops.py list
-
-# Remove a desktop container (replace with actual container name from list)
-python3 scripts/manage_desktops.py delete desktop-alice-a1b2c3d4
+[+] Setup complete.
+    Desktop: https://34.x.x.x:3001
+    Login: admin / changeme
 ```
 
 ---
 
-## Step 7 (Optional): Use Your Domain and HTTPS
+## Step 6: Open the desktop in your browser
 
-To use a hostname like `desktop.yourdomain.com` and HTTPS:
+1. In your browser, open: **https://YOUR_VM_IP:3001**
+2. Your browser will likely warn about the certificate (the container uses a self-signed cert). Choose “Advanced” → “Proceed to …” to continue.
+3. Log in with:
+   - **Username:** `admin`
+   - **Password:** `changeme`
+4. You should see the full XFCE desktop (panel, icons, file manager, terminal, Chromium, etc.).
 
-**7.1 Point the domain to the VM**  
-In your domain registrar or DNS provider, add an **A** record:
+Change the password by setting `DESKTOP_PASSWORD` and recreating the container, or in a later version via the UI.
 
-- **Name/host:** `desktop` (or `@` for root domain).
-- **Value:** The VM’s external IP (e.g. `34.x.x.x`).
-- **TTL:** 300 or default.
+---
 
-Wait until DNS propagates (e.g. `dig desktop.yourdomain.com` or an online checker).
+## Optional: Custom password
 
-**7.2 Install Nginx and Certbot on the VM**
-
-```bash
-sudo apt-get update
-sudo apt-get install -y nginx certbot python3-certbot-nginx
-```
-
-**7.3 Configure Nginx**
-
-Copy the project’s Nginx config and replace the placeholder hostname:
+To set a different password before the first run:
 
 ```bash
-sudo cp ~/terabits-1.2/nginx/nginx.conf /etc/nginx/sites-available/guacamole
-sudo sed -i 's/desktop.yourdomain.com/YOUR_ACTUAL_DOMAIN/g' /etc/nginx/sites-available/guacamole
-sudo ln -sf /etc/nginx/sites-available/guacamole /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+cd ~/terabitsai-1.2
+export DESKTOP_PASSWORD=your_secure_password
+sudo -E bash scripts/setup-vm.sh
 ```
 
-**7.4 Get an HTTPS certificate**
+Or create a `.env` file in the project root:
+
+```
+DESKTOP_PASSWORD=your_secure_password
+```
+
+Then run `sudo docker compose up -d` so Compose reads `.env`.
+
+---
+
+## Optional: Domain and reverse proxy (HTTPS with Let’s Encrypt)
+
+To use a hostname like `desktop.yourdomain.com` with a valid certificate:
+
+1. Point your domain’s **A** record to the VM’s external IP.
+2. Install a reverse proxy (e.g. Nginx or Caddy) on the VM.
+3. Proxy `https://desktop.yourdomain.com` to `http://127.0.0.1:3001` (or use the HTTP port 3000 if the webtop image exposes it for proxying). The webtop container uses HTTPS internally; your proxy can terminate SSL with Let’s Encrypt and forward to the container.
+4. Add a firewall rule for **tcp:443** if you use standard HTTPS on the proxy.
+
+Detailed Nginx/Caddy steps depend on your choice; the main idea is: proxy to `localhost:3001` (or `3000`) and keep the desktop container bound to localhost or a private network if you want only the proxy to be public.
+
+---
+
+## Useful commands
 
 ```bash
-sudo certbot --nginx -d desktop.yourdomain.com
+# From project root on the VM
+
+# Show container status
+docker compose ps
+
+# View desktop container logs
+docker compose logs -f desktop
+
+# Stop the desktop
+docker compose down
+
+# Start again (data in volume is preserved)
+docker compose up -d
 ```
-
-Follow the prompts. Certbot will configure SSL in Nginx.
-
-**7.5 Access Guacamole via domain**  
-Open `https://desktop.yourdomain.com` in your browser. You should see the Guacamole login page over HTTPS.
 
 ---
 
 ## Troubleshooting
 
-- **Guacamole page does not load:** Ensure the VM firewall allows **tcp:8080** (and **tcp:80** / **tcp:443** if using Nginx). In Google Cloud, check **VPC network** → **Firewall** and add an ingress rule for these ports if needed.
-- **Desktop connection stays “Connecting…”:** The desktop container must be on the same Docker network as Guacamole. The setup uses the network `clouddesktop_guacamole`. If you changed the Compose project name, set `GUACAMOLE_NETWORK` when running `manage_desktops.py` (e.g. `GUACAMOLE_NETWORK=yourproject_guacamole python3 scripts/manage_desktops.py create alice`).
-- **“Connection refused” to PostgreSQL from `manage_desktops.py`:** Ensure the Guacamole stack is running (`docker compose ps`) and that the Postgres container exposes port 5432 to localhost (as in the provided `docker-compose.yml`). Use `GUACAMOLE_DB_HOST=127.0.0.1` (default) when running the script on the same host.
-- **Desktop container exits immediately:** Check logs: `docker logs CONTAINER_NAME`. Ensure the desktop image was built successfully (`docker images | grep cloud-desktop-xfce`) and that `scripts/setup-vm.sh` completed without errors.
+- **Page does not load / connection refused:**  
+  Ensure the firewall allows **tcp:3001** to the VM (see Step 2). Check from another machine: `curl -k https://VM_IP:3001` (you should get an HTTP response or redirect).
+
+- **Certificate warning:**  
+  Expected. The container uses a self-signed certificate. Use “Advanced” → “Proceed” for testing, or put the desktop behind a reverse proxy with Let’s Encrypt (see optional section above).
+
+- **Container exits or keeps restarting:**  
+  Run `docker compose logs desktop` and check for errors. Ensure the VM has at least 2 GB RAM and sufficient disk. The image requires `shm_size: 1gb`; the provided `docker-compose.yml` already sets this.
+
+- **Desktop is slow:**  
+  Use a larger machine type (e.g. e2-standard-4). Choose a region close to you. Selkies streaming is generally more efficient than VNC/Guacamole.
+
+- **Forgot password:**  
+  Set a new password by setting `DESKTOP_PASSWORD` in the environment, then run `docker compose down` and `docker compose up -d` so the container restarts with the new password.
 
 ---
 
@@ -187,12 +183,11 @@ Open `https://desktop.yourdomain.com` in your browser. You should see the Guacam
 
 | Step | Action |
 |------|--------|
-| 1 | Create Ubuntu 22.04 VM on Google Cloud (e2-standard-2, 80 GB, HTTP/HTTPS allowed). |
-| 2 | Copy this project to the VM. |
-| 3 | SSH into the VM. |
-| 4 | Run `sudo bash scripts/setup-vm.sh` from the project root. |
-| 5 | Open `http://VM_IP:8080/guacamole/` and log in as `guacadmin` / `guacadmin`; change password. |
-| 6 | Create a Guacamole user, then run `python3 scripts/manage_desktops.py create USERNAME` to give that user a desktop. |
-| 7 | (Optional) Point your domain to the VM, install Nginx + Certbot, and use the provided Nginx config to serve Guacamole over HTTPS. |
+| 1 | Create Ubuntu 22.04 VM on Google Cloud (e2-standard-2, 80 GB, allow HTTP/HTTPS or tcp:3001). |
+| 2 | Add firewall rule for **tcp:3001** (and 443 if using a reverse proxy). |
+| 3 | Copy this project to the VM. |
+| 4 | SSH into the VM. |
+| 5 | Run `sudo bash scripts/setup-vm.sh` from the project root. |
+| 6 | Open **https://VM_IP:3001** in the browser, log in as **admin** / **changeme**. |
 
-After this, users log in to Guacamole and open their assigned desktop connection to use the Linux desktop in the browser.
+After this, you have a single-container cloud desktop. Phase 2 will add AI control; Phase 3 will add multi-user desktops.

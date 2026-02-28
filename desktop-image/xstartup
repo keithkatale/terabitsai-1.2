@@ -1,7 +1,0 @@
-#!/bin/bash
-# Start XFCE session for VNC (used by TigerVNC)
-
-unset SESSION_MANAGER
-unset DBUS_SESSION_BUS_ADDRESS
-
-exec startxfce4
