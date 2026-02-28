@@ -18,9 +18,12 @@ fi
 rm -f /home/${USER}/.vnc/*.pid /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null || true
 
 # Start TigerVNC on display :1 (port 5901)
+# -I-KNOW-THIS-IS-INSECURE: required when binding to all interfaces without auth;
+# only guacd on the Docker network can reach this, not the public internet.
 vncserver :1 \
   -geometry "${VNC_GEOMETRY:-1280x720}" \
   -depth "${VNC_DEPTH:-24}" \
   -localhost no \
   -SecurityTypes none \
+  -I-KNOW-THIS-IS-INSECURE \
   -fg
