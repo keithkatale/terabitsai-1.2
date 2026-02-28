@@ -1,0 +1,65 @@
+# Cloud Desktop System - Apache Guacamole + PostgreSQL
+# Access at http://YOUR_VM_IP:8080/guacamole/ (default login: guacadmin / guacadmin)
+
+name: clouddesktop
+
+services:
+  guacd:
+    image: guacamole/guacd:1.6.0
+    container_name: guacd
+    restart: unless-stopped
+    networks:
+      - guacamole
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: guacamole-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-guacamole_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - guacamole
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guacamole_user -d guacamole_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  guacamole:
+    image: guacamole/guacamole:1.6.0
+    container_name: guacamole
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      guacd:
+        condition: service_started
+    environment:
+      GUACD_HOSTNAME: guacd
+      GUACD_PORT: "4822"
+      POSTGRESQL_ENABLED: "true"
+      POSTGRESQL_HOSTNAME: postgres
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_USERNAME: guacamole_user
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:-guacamole_secure_password}
+      # Optional: enable when behind Nginx reverse proxy
+      REMOTE_IP_VALVE_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    networks:
+      - guacamole
+
+volumes:
+  postgres_data:
+
+networks:
+  guacamole:
+    driver: bridge

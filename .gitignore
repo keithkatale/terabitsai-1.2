@@ -1,0 +1,17 @@
+# Generated on VM by setup-vm.sh
+init/initdb.sql
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+# Env
+.env
+.env.local
+# IDE / OS
+.idea/
+.DS_Store
+*.swp
+*.swo
