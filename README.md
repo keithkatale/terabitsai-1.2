@@ -1,40 +1,35 @@
 # Terabits Cloud Desktop
 
-A Linux desktop in the cloud: one container, one command. Open your browser and use a full Ubuntu XFCE desktop with Selkies streaming (no Guacamole, no VNC).
+A Linux desktop in the cloud with an **AI task layer** (ByteBot). Open your browser to create tasks in natural language; the AI controls the desktop to complete them. Built on [ByteBot](https://github.com/bytebot-ai/bytebot).
 
-## Quick start (on Google Cloud VM)
+## Quick start (Google Cloud VM)
 
-1. **Create a VM** on Google Cloud: Ubuntu 22.04, e2-standard-2 (or larger), 80 GB disk. Allow **HTTP** and **HTTPS** (or at least allow TCP port **3001** in the firewall).
-2. **Copy this project** to the VM (e.g. `git clone` or `scp`).
-3. **SSH** into the VM and run:
+1. **Create a VM**: Ubuntu 22.04, e2-standard-2 (or larger), 80 GB disk. Allow **TCP ports 9992 and 9990** in the firewall.
+2. **Clone and run**:
    ```bash
+   git clone https://github.com/keithkatale/terabitsai-1.2.git ~/terabitsai-1.2
    cd ~/terabitsai-1.2
    sudo bash scripts/setup-vm.sh
    ```
-4. Open **https://YOUR_VM_IP:3001** in your browser.
-5. Log in with **admin** / **changeme** (or the password you set via `DESKTOP_PASSWORD`).
+3. Open **http://YOUR_VM_IP:9992** — Task UI (create tasks, watch the desktop).
+4. Open **http://YOUR_VM_IP:9990** — Desktop / noVNC only.
+5. **Enable AI**: set `GEMINI_API_KEY=your_key` in `.env`, then run `docker compose up -d` again.
 
-You get a full XFCE desktop: file manager, terminal, Chromium, clipboard, file upload/download via the sidebar. Change the password after first login if you expose the VM to the internet.
-
-Full steps and troubleshooting: [docs/SETUP.md](docs/SETUP.md).
+Full steps: [docs/SETUP.md](docs/SETUP.md).
 
 ## Project layout
 
-- `docker-compose.yml` — Single webtop service (Ubuntu XFCE in the browser)
-- `scripts/setup-vm.sh` — One-time VM setup (Docker, pull image, start service)
+- `docker-compose.yml` — ByteBot stack (desktop, postgres, agent, UI)
+- `scripts/setup-vm.sh` — One-time VM setup (Docker, pull images, start stack)
+- `.env.example` — Copy to `.env` and set `GEMINI_API_KEY` for AI tasks
 - `docs/SETUP.md` — Google Cloud deployment and troubleshooting
 
-## Optional: custom password
+## What you get
 
-Before running the setup script:
+- **Task UI (port 9992)**: Create tasks in natural language; watch the AI use the desktop to complete them. Live desktop view, takeover mode.
+- **Desktop (port 9990)**: Ubuntu XFCE with Firefox, terminal, file manager. Same desktop the AI controls.
+- **AI**: Uses Google Gemini (set `GEMINI_API_KEY` in `.env`).
 
-```bash
-export DESKTOP_PASSWORD=your_secure_password
-sudo -E bash scripts/setup-vm.sh
-```
+## Optional: Postgres password
 
-Or set `DESKTOP_PASSWORD` in a `.env` file in the project root before `docker compose up`.
-
-## What's next
-
-Phase 2 (planned) adds an AI layer so a model (e.g. Gemini) can perform tasks on this desktop. Phase 3 adds multi-user support (one desktop per user).
+Set `POSTGRES_PASSWORD` in `.env` to change the database password (default: `postgres`).

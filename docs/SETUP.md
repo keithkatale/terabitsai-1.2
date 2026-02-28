@@ -1,13 +1,13 @@
 # Terabits Cloud Desktop — Setup Guide
 
-This guide walks you through running the Terabits cloud desktop on Google Cloud. When done, you open a link in your browser, log in with a username and password, and get a full Ubuntu XFCE desktop. One container, no Guacamole or VNC.
+This guide walks you through running the Terabits cloud desktop (ByteBot stack) on Google Cloud. You get a web Task UI where you create AI tasks and watch a Linux desktop complete them, plus direct desktop access via noVNC.
 
 ---
 
 ## Prerequisites
 
 - A Google Cloud Platform account (with free credits or billing enabled).
-- A domain name is optional for initial testing; you can use the VM’s external IP.
+- A **Gemini API key** (for AI tasks): [Google AI Studio](https://aistudio.google.com/apikey).
 
 ---
 
@@ -18,25 +18,27 @@ This guide walks you through running the Terabits cloud desktop on Google Cloud.
 3. Set:
    - **Name:** e.g. `terabits-desktop`
    - **Region:** e.g. `us-central1` (pick one near you).
-   - **Machine type:** `e2-standard-2` (2 vCPUs, 8 GB RAM). Use a larger type for smoother desktop use.
+   - **Machine type:** `e2-standard-2` (2 vCPUs, 8 GB RAM). Use a larger type for smoother desktop and AI.
    - **Boot disk:** **Change** → **Ubuntu 22.04 LTS** → **80 GB** (or more) → **Select**.
-   - **Firewall:** Allow **HTTP** and **HTTPS** (or create a custom rule allowing **tcp:3001**).
+   - **Firewall:** Allow **HTTP** and **HTTPS** (or add custom rules in Step 2).
 4. Click **Create**.
-5. Note the **External IP** of the VM. You will use it to open the desktop in your browser.
+5. Note the **External IP** of the VM.
 
 ---
 
-## Step 2: Open firewall for port 3001
+## Step 2: Open firewall for ports 9992 and 9990
 
-The desktop is served over HTTPS on port **3001**. Ensure the VM can receive traffic on that port.
+- **9992** — Task UI (create tasks, view desktop).
+- **9990** — Desktop / noVNC (optional if you only use the Task UI).
 
-- If you allowed **HTTPS** in Step 1, note that GCP’s “HTTPS” tag usually means port 443. For port 3001 you need an explicit rule.
-- In **VPC network** → **Firewall** → **Create firewall rule**:
-  - **Name:** e.g. `allow-desktop`
-  - **Targets:** All instances (or a specific tag)
-  - **Source IP ranges:** `0.0.0.0/0` (or restrict to your IPs)
-  - **Protocols and ports:** **tcp** → **3001**
-- Save.
+In **VPC network** → **Firewall** → **Create firewall rule**:
+
+- **Name:** e.g. `allow-terabits`
+- **Targets:** All instances (or a specific tag)
+- **Source IP ranges:** `0.0.0.0/0` (or restrict to your IPs)
+- **Protocols and ports:** **tcp** → **9992,9990**
+
+Save.
 
 ---
 
@@ -45,7 +47,6 @@ The desktop is served over HTTPS on port **3001**. Ensure the VM can receive tra
 **Option A — Git (on the VM):**
 
 ```bash
-# SSH into the VM first (Step 4), then:
 git clone https://github.com/keithkatale/terabitsai-1.2.git ~/terabitsai-1.2
 cd ~/terabitsai-1.2
 ```
@@ -53,19 +54,15 @@ cd ~/terabitsai-1.2
 **Option B — From your machine (scp):**
 
 ```bash
-scp -r /path/to/terabits-1.2 VM_USER@VM_EXTERNAL_IP:~/
+scp -r /path/to/terabits-1.2 VM_USER@VM_EXTERNAL_IP:~/terabitsai-1.2
 ```
-
-**Option C — Upload a zip** via Cloud Console SSH “Upload file” and unzip on the VM.
 
 ---
 
 ## Step 4: SSH into the VM
 
 1. In Cloud Console: **Compute Engine** → **VM instances**.
-2. Click **SSH** next to your VM (or use `gcloud compute ssh INSTANCE_NAME` from your laptop).
-
-You should be in a shell on the VM.
+2. Click **SSH** next to your VM (or use `gcloud compute ssh INSTANCE_NAME`).
 
 ---
 
@@ -81,62 +78,47 @@ sudo bash scripts/setup-vm.sh
 The script will:
 
 - Install Docker and Docker Compose (if not already installed).
-- Pull the webtop image (`lscr.io/linuxserver/webtop:ubuntu-xfce`).
-- Start the desktop container.
+- Create `.env` from `.env.example` if missing.
+- Pull ByteBot images (desktop, agent, UI, postgres).
+- Start all four containers.
 
-At the end it prints something like:
+At the end it prints:
 
 ```
 [+] Setup complete.
-    Desktop: https://34.x.x.x:3001
-    Login: admin / changeme
+    Task UI (create AI tasks, view desktop): http://YOUR_VM_IP:9992
+    Desktop / noVNC only:                    http://YOUR_VM_IP:9990
+
+    Set GEMINI_API_KEY in .env and run 'docker compose up -d' again to enable AI tasks.
 ```
 
 ---
 
-## Step 6: Open the desktop in your browser
+## Step 6: Enable AI (Gemini)
 
-1. In your browser, open: **https://YOUR_VM_IP:3001**
-2. Your browser will likely warn about the certificate (the container uses a self-signed cert). Choose “Advanced” → “Proceed to …” to continue.
-3. Log in with:
-   - **Username:** `admin`
-   - **Password:** `changeme`
-4. You should see the full XFCE desktop (panel, icons, file manager, terminal, Chromium, etc.).
-
-Change the password by setting `DESKTOP_PASSWORD` and recreating the container, or in a later version via the UI.
-
----
-
-## Optional: Custom password
-
-To set a different password before the first run:
-
-```bash
-cd ~/terabitsai-1.2
-export DESKTOP_PASSWORD=your_secure_password
-sudo -E bash scripts/setup-vm.sh
-```
-
-Or create a `.env` file in the project root:
-
-```
-DESKTOP_PASSWORD=your_secure_password
-```
-
-Then run `sudo docker compose up -d` so Compose reads `.env`.
+1. On the VM, edit `.env` in the project root:
+   ```bash
+   nano ~/terabitsai-1.2/.env
+   ```
+2. Set your Gemini API key:
+   ```
+   GEMINI_API_KEY=your_actual_key_here
+   ```
+3. Restart the agent so it picks up the key:
+   ```bash
+   cd ~/terabitsai-1.2
+   sudo docker compose up -d
+   ```
 
 ---
 
-## Optional: Domain and reverse proxy (HTTPS with Let’s Encrypt)
+## Step 7: Open the Task UI and use the desktop
 
-To use a hostname like `desktop.yourdomain.com` with a valid certificate:
+1. In your browser, open: **http://YOUR_VM_IP:9992**
+2. You should see the ByteBot Task UI. Create a task (e.g. “Open Firefox and go to Wikipedia”) and watch the desktop execute it.
+3. Optionally open **http://YOUR_VM_IP:9990** for direct noVNC desktop access.
 
-1. Point your domain’s **A** record to the VM’s external IP.
-2. Install a reverse proxy (e.g. Nginx or Caddy) on the VM.
-3. Proxy `https://desktop.yourdomain.com` to `http://127.0.0.1:3001` (or use the HTTP port 3000 if the webtop image exposes it for proxying). The webtop container uses HTTPS internally; your proxy can terminate SSL with Let’s Encrypt and forward to the container.
-4. Add a firewall rule for **tcp:443** if you use standard HTTPS on the proxy.
-
-Detailed Nginx/Caddy steps depend on your choice; the main idea is: proxy to `localhost:3001` (or `3000`) and keep the desktop container bound to localhost or a private network if you want only the proxy to be public.
+No sign-in is required by default; the Task UI and desktop are open to anyone who can reach the VM. For production, put the stack behind a reverse proxy with authentication.
 
 ---
 
@@ -148,13 +130,15 @@ Detailed Nginx/Caddy steps depend on your choice; the main idea is: proxy to `lo
 # Show container status
 docker compose ps
 
-# View desktop container logs
+# View logs (desktop, agent, or ui)
 docker compose logs -f desktop
+docker compose logs -f agent
+docker compose logs -f ui
 
-# Stop the desktop
+# Stop everything
 docker compose down
 
-# Start again (data in volume is preserved)
+# Start again (data in postgres volume is preserved)
 docker compose up -d
 ```
 
@@ -162,20 +146,17 @@ docker compose up -d
 
 ## Troubleshooting
 
-- **Page does not load / connection refused:**  
-  Ensure the firewall allows **tcp:3001** to the VM (see Step 2). Check from another machine: `curl -k https://VM_IP:3001` (you should get an HTTP response or redirect).
+- **Task UI or desktop does not load:**  
+  Ensure the firewall allows **tcp:9992** and **tcp:9990**. From another machine: `curl -s -o /dev/null -w "%{http_code}" http://VM_IP:9992`.
 
-- **Certificate warning:**  
-  Expected. The container uses a self-signed certificate. Use “Advanced” → “Proceed” for testing, or put the desktop behind a reverse proxy with Let’s Encrypt (see optional section above).
+- **AI tasks do nothing / “no provider”:**  
+  Set `GEMINI_API_KEY` in `.env` and run `docker compose up -d`. Check agent logs: `docker compose logs agent`.
 
-- **Container exits or keeps restarting:**  
-  Run `docker compose logs desktop` and check for errors. Ensure the VM has at least 2 GB RAM and sufficient disk. The image requires `shm_size: 1gb`; the provided `docker-compose.yml` already sets this.
+- **Agent or UI keeps restarting:**  
+  Ensure postgres is healthy: `docker compose ps`. Agent runs Prisma migrations on start; if postgres was not ready, restart: `docker compose restart agent`.
 
 - **Desktop is slow:**  
-  Use a larger machine type (e.g. e2-standard-4). Choose a region close to you. Selkies streaming is generally more efficient than VNC/Guacamole.
-
-- **Forgot password:**  
-  Set a new password by setting `DESKTOP_PASSWORD` in the environment, then run `docker compose down` and `docker compose up -d` so the container restarts with the new password.
+  Use a larger machine type (e.g. e2-standard-4) and a region close to you.
 
 ---
 
@@ -183,11 +164,12 @@ docker compose up -d
 
 | Step | Action |
 |------|--------|
-| 1 | Create Ubuntu 22.04 VM on Google Cloud (e2-standard-2, 80 GB, allow HTTP/HTTPS or tcp:3001). |
-| 2 | Add firewall rule for **tcp:3001** (and 443 if using a reverse proxy). |
+| 1 | Create Ubuntu 22.04 VM on Google Cloud (e2-standard-2, 80 GB). |
+| 2 | Add firewall rule for **tcp:9992** and **tcp:9990**. |
 | 3 | Copy this project to the VM. |
 | 4 | SSH into the VM. |
 | 5 | Run `sudo bash scripts/setup-vm.sh` from the project root. |
-| 6 | Open **https://VM_IP:3001** in the browser, log in as **admin** / **changeme**. |
+| 6 | Set `GEMINI_API_KEY` in `.env` and run `docker compose up -d` again. |
+| 7 | Open **http://VM_IP:9992** for the Task UI; **http://VM_IP:9990** for desktop only. |
 
-After this, you have a single-container cloud desktop. Phase 2 will add AI control; Phase 3 will add multi-user desktops.
+You now have a cloud desktop with an AI task layer (ByteBot + Gemini).

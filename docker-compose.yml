@@ -1,22 +1,71 @@
+# Terabits Cloud Desktop with AI (ByteBot stack)
+# Desktop + AI agent + Task UI + PostgreSQL. Set GEMINI_API_KEY to use AI tasks.
+
 name: terabits
 
 services:
   desktop:
-    image: lscr.io/linuxserver/webtop:ubuntu-xfce
+    image: ghcr.io/bytebot-ai/bytebot-desktop:edge
     container_name: terabits-desktop
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - CUSTOM_USER=admin
-      - PASSWORD=${DESKTOP_PASSWORD:-changeme}
-    volumes:
-      - desktop_data:/config
-    ports:
-      - "3000:3000"
-      - "3001:3001"
-    shm_size: "1gb"
     restart: unless-stopped
+    hostname: computer
+    privileged: true
+    shm_size: "2g"
+    ports:
+      - "9990:9990"   # bytebotd + noVNC
+    environment:
+      - DISPLAY=:0
+    networks:
+      - terabits-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: terabits-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=bytebotdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - terabits-network
+
+  agent:
+    image: ghcr.io/bytebot-ai/bytebot-agent:edge
+    container_name: terabits-agent
+    restart: unless-stopped
+    ports:
+      - "9991:9991"
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/bytebotdb
+      - BYTEBOT_DESKTOP_BASE_URL=http://desktop:9990
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - postgres
+    networks:
+      - terabits-network
+
+  ui:
+    image: ghcr.io/bytebot-ai/bytebot-ui:edge
+    container_name: terabits-ui
+    restart: unless-stopped
+    ports:
+      - "9992:9992"
+    environment:
+      - NODE_ENV=production
+      - BYTEBOT_AGENT_BASE_URL=http://agent:9991
+      - BYTEBOT_DESKTOP_VNC_URL=http://desktop:9990/websockify
+    depends_on:
+      - agent
+    networks:
+      - terabits-network
+
+networks:
+  terabits-network:
+    driver: bridge
 
 volumes:
-  desktop_data:
+  postgres_data:

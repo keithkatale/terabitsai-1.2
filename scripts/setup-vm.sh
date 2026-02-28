@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Terabits Cloud Desktop - One-time VM setup script
-# Run this on a fresh Ubuntu 22.04 Google Cloud VM (e.g. after cloning the project).
-# Usage: sudo bash scripts/setup-vm.sh
+# Terabits Cloud Desktop (ByteBot stack) - One-time VM setup
+# Run on Ubuntu 22.04 (e.g. Google Cloud VM). Usage: sudo bash scripts/setup-vm.sh
 
 set -e
 
@@ -9,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.yml"
 
-echo "[*] Terabits Cloud Desktop setup - starting from ${PROJECT_ROOT}"
+echo "[*] Terabits Cloud Desktop (ByteBot) setup - starting from ${PROJECT_ROOT}"
 
 # --- Install Docker if not present ---
 if ! command -v docker &>/dev/null; then
@@ -26,7 +25,7 @@ else
   echo "[*] Docker already installed: $(docker --version)"
 fi
 
-# --- Ensure Docker Compose plugin is available ---
+# --- Docker Compose plugin ---
 if ! docker compose version &>/dev/null; then
   echo "[*] Installing Docker Compose plugin..."
   apt-get update -qq
@@ -34,12 +33,23 @@ if ! docker compose version &>/dev/null; then
 fi
 echo "[*] Docker Compose: $(docker compose version)"
 
-# --- Pull webtop image ---
-echo "[*] Pulling webtop image..."
-docker pull lscr.io/linuxserver/webtop:ubuntu-xfce
+# --- Ensure .env exists ---
+if [ ! -f "${PROJECT_ROOT}/.env" ]; then
+  if [ -f "${PROJECT_ROOT}/.env.example" ]; then
+    cp "${PROJECT_ROOT}/.env.example" "${PROJECT_ROOT}/.env"
+    echo "[*] Created .env from .env.example — set GEMINI_API_KEY in .env for AI tasks."
+  fi
+fi
 
-# --- Start desktop service ---
-echo "[*] Starting Terabits desktop..."
+# --- Pull ByteBot images ---
+echo "[*] Pulling ByteBot images..."
+docker pull ghcr.io/bytebot-ai/bytebot-desktop:edge
+docker pull ghcr.io/bytebot-ai/bytebot-agent:edge
+docker pull ghcr.io/bytebot-ai/bytebot-ui:edge
+docker pull postgres:16-alpine
+
+# --- Start stack ---
+echo "[*] Starting Terabits stack (desktop, postgres, agent, UI)..."
 cd "${PROJECT_ROOT}"
 docker compose -f "${COMPOSE_FILE}" up -d
 
@@ -47,9 +57,9 @@ VM_IP="$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/co
 
 echo ""
 echo "[+] Setup complete."
-echo "    Desktop: https://${VM_IP}:3001"
-echo "    Login: admin / changeme (or set DESKTOP_PASSWORD before running)"
+echo "    Task UI (create AI tasks, view desktop): http://${VM_IP}:9992"
+echo "    Desktop / noVNC only:                    http://${VM_IP}:9990"
 echo ""
-echo "    Allow TCP port 3001 in your firewall (e.g. Google Cloud VPC firewall) if needed."
-echo "    For first visit, your browser may warn about the self-signed certificate; accept to continue."
+echo "    Set GEMINI_API_KEY in .env and run 'docker compose up -d' again to enable AI tasks."
+echo "    Allow TCP ports 9992 and 9990 in your firewall if needed."
 echo ""
